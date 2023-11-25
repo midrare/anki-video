@@ -1,0 +1,5 @@
+.pdm-python
+*.lock
+*.lck
+*.temp
+*.tmp
