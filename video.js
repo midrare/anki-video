@@ -1,3 +1,11 @@
+/*
+ * This file, video.js, was retrieved from
+ * https://github.com/videojs/video.js and used under the Apache 2.0
+ * license. In compliance with the license, the license for this file
+ * is reproduced as follows.
+ */
+
+
 /**
  * @license
  * Video.js 8.6.1 <http://videojs.com/>
