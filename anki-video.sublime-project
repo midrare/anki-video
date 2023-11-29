@@ -8,6 +8,7 @@
 				"//.do_tasks",
 				"//.root",
 				"//.pdm-python",
+                "*.un~",
 			],
 			"folder_exclude_patterns": [
 				"//.venv",
