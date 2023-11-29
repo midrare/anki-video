@@ -18,6 +18,18 @@
                 ".pytest_cache",
                 ".pdm-build",
 			],
+            "index_exclude_patterns": [
+                "video-js.css",
+                "video-js.*.css",
+                "video.js",
+                "video.*.js",
+            ],
+            "binary_file_patterns": [
+                "video-js.css",
+                "video-js.*.css",
+                "video.js",
+                "video.*.js",
+            ]
 		}
 	],
     "settings":

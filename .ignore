@@ -3,3 +3,6 @@
 *.lck
 *.temp
 *.tmp
+/video.js
+/video.*.js
+/video*.css

@@ -1,5 +1,9 @@
 {
-    "Default autoplay": true,
-    "Default loop": true,
-    "Default volume": 1.0
+    "clipboard paste": true,
+    "drag-and-drop": true,
+    "autoplay": true,
+    "loop": true,
+    "controls": true,
+    "mute": false,
+    "volume": 1.0
 }

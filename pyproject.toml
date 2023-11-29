@@ -3,7 +3,7 @@ name = "anki-video"
 version = "0.1.0"
 description = "Inline video addon for Anki"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 authors = [
     { name = "midrare", email = "midrare9@gmail.com" },
 ]
