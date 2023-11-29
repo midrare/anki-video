@@ -4,7 +4,7 @@ repos:
     rev: v4.4.0
     hooks:
       - id: check-added-large-files
-        exclude: '^video-js(\..+)?\.css|video(\..+)?\.js$'
+        exclude: '^video-js(\..+)?\.css|video(\..+)?\.js|demo.*\.gif$'
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: mixed-line-ending
