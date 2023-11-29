@@ -6,14 +6,15 @@ import pathlib
 import re
 import shutil
 import signal
-import threading
 import subprocess
 import tempfile
+import threading
 import time
 import typing
 import urllib.parse
 import urllib.request
 import uuid
+import xml.dom.minidom
 
 import anki.cards
 import anki.media
@@ -23,7 +24,6 @@ import aqt.gui_hooks
 import aqt.operations
 import aqt.qt
 import aqt.utils
-import bs4
 
 IMAGE_EXTS: typing.Final[list[str]] = [
     '.png',
@@ -275,8 +275,8 @@ def _on_card_will_show(
                 el.querySelectorAll("config").forEach((optEl) => {{
                     var key = optEl.hasAttribute("option")
                         ? optEl.getAttribute("option") : null;
-                    var value = optEl.hasAttribute("value")
-                        ? optEl.getAttribute("value") : null;
+                    var value = optEl.textContent !== ""
+                        ? optEl.textContent : null;
 
                     if (typeof key !== "undefined"
                     && typeof value !== "undefined"
@@ -376,44 +376,55 @@ def _on_editor_will_process_mime(
     or (not config["clipboard paste"] and not drop_event):
         return mime
 
-    soup = bs4.BeautifulSoup()
+    htmls = []
 
     for url in mime.urls():
         file = pathlib.Path(url.toLocalFile())
         uid, thumbfile, videofile = _import_video_async(editor, file)
 
-        video = soup.new_tag(
-            'video',
-            attrs={
-                'id': uid,
-                'class': [ 'video-js', ELEMENT_CLASS ],
-                'controls': True,
-                'preload': 'auto',
-                'poster': thumbfile.name,
-            })
-        soup.append(video)
+        doc = xml.dom.minidom.Document()
 
-        video.append(soup.new_tag('source', attrs={
-            'src': videofile.name,
-            'type': mimetypes.guess_type(videofile, strict=False)[0] \
-            or f"video/{videofile.suffix.strip('.')}"
-        }))
+        video = doc.createElement('video')
+        video.setAttribute('id', uid)
+        video.setAttribute('class', ' '.join([ 'video-js', ELEMENT_CLASS ]))
+        video.setAttribute('controls', 'true')
+        video.setAttribute('preload', 'auto')
+        video.setAttribute('poster', thumbfile.name)
+        doc.appendChild(video)
+
+        # empty text child node to prevent Anki's inserthtml() mangling
+
+        source = doc.createElement('source')
+        source.setAttribute('src', videofile.name)
+        source.setAttribute(
+            'type',
+            mimetypes.guess_type(videofile, strict=False)[0] or '')
+        source.appendChild(doc.createTextNode(''))
+        video.appendChild(source)
 
         # prevents Anki from deleting file when checking media
         # https://github.com/ankitects/anki/blob/ ...
         #   ... ae6a03942f651790c40f8d8479f90eb7715bf2af/rslib/src/text.rs#L104
-        video.append(soup.new_tag('object', hidden=True, src=videofile.name))
-        video.append(soup.new_tag('object', hidden=True, src=thumbfile.name))
 
-        video.append(soup.new_tag('config', option='autoplay', value='null'))
-        video.append(soup.new_tag('config', option='loop', value='null'))
-        video.append(soup.new_tag('config', option='controls', value='null'))
-        video.append(soup.new_tag('config', option='mute', value='null'))
-        video.append(soup.new_tag('config', option='volume', value='null'))
+        for asset in [videofile.name, thumbfile.name]:
+            el = doc.createElement('object')
+            el.setAttribute('hidden', 'true')
+            el.setAttribute('src', asset)
+            el.appendChild(doc.createTextNode(''))
+            video.appendChild(el)
 
+        for opt in [ 'autoplay', 'loop', 'controls', 'mute', 'volume']:
+            el = doc.createElement('config')
+            el.setAttribute('option', opt)
+            el.appendChild(doc.createTextNode('null'))
+            video.appendChild(el)
+
+        htmls.append(video.toprettyxml(indent='    '))
+
+    html = '\n'.join(htmls)
     editor.eval(
         rf"""(function () {{
-        let html = {json.dumps(soup.prettify())};
+        let html = {json.dumps(html)};
         if (html !== "") {{
             setFormat("inserthtml", html)
         }}
