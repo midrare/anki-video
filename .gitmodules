@@ -1,3 +1,0 @@
-[submodule "dotfmt"]
-	path = dotfmt
-	url = git@github.com:midrare/dotfmt.git
