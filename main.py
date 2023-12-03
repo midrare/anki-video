@@ -1,4 +1,5 @@
 import concurrent.futures
+from enum import auto
 import json
 import mimetypes
 import os
@@ -84,8 +85,7 @@ Config = typing.TypedDict(
         'controls': bool,
         'mute': bool,
         'volume': typing.Optional[float],
-        'width': typing.Optional[int],
-        'height': typing.Optional[int],
+        'size': typing.Optional[str],
     })
 
 DEFAULT_CONFIG: typing.Final[Config] = {
@@ -96,8 +96,7 @@ DEFAULT_CONFIG: typing.Final[Config] = {
     'controls': True,
     'mute': False,
     'volume': None,
-    'width': None,
-    'height': None,
+    'size': None,
 }
 
 assert aqt.mw, 'no main window found'
@@ -252,6 +251,20 @@ def _on_card_will_show(
             html += f.read()
             html += '\n'
 
+    autoresize = False
+    width = -1
+    height = -1
+    if (size := config.get('size')) and isinstance(size, str):
+        if (m := re.match(r'^\s*([0-9]+)(?:\s*px\s*)?' + r'[x\s,:\-/\\]+'
+                          + r'([0-9]+)(?:\s*px\s*)?\s*$', size, re.IGNORECASE)):
+            autoresize = False
+            width = int(m.group(1))
+            height = int(m.group(2))
+        elif size.lower() in ['auto']:
+            autoresize = True
+        elif size.lower() in ['default']:
+            autoresize = False
+
     html += f"""
         onUpdateHook.push(function() {{
             const els = document.querySelectorAll(".{ELEMENT_CLASS}");
@@ -267,22 +280,21 @@ def _on_card_will_show(
                     if config.get('autoplay', True) else 'false'};
                 opts.volume = {config['volume']
                     if config.get('volume') is not None else 'null'};
-                opts.width = {config['width']
-                    if config.get('width') is not None else 'null'};
-                opts.height = {config['height']
-                    if config.get('height') is not None else 'null'};
+
+                if ({width} >= 0 && {height} >= 0) {{
+                    opts.width = {width};
+                    opts.height = {height};
+                }}
 
                 el.querySelectorAll("config").forEach((optEl) => {{
                     var key = optEl.hasAttribute("option")
                         ? optEl.getAttribute("option") : null;
-                    var value = optEl.textContent !== ""
-                        ? optEl.textContent : null;
+                    var value = (optEl.textContent?.trim()?.length || 0) > 0
+                        ? optEl.textContent.trim() : null;
 
-                    if (typeof key !== "undefined"
-                    && typeof value !== "undefined"
-                    && key !== null && value !== null
-                    && key !== "null" && value !== "null"
-                    && key !== "" && value !== "") {{
+                    if (key && typeof key === "string"
+                    && typeof value === "string"
+                    && value.toLowerCase() !== "null") {{
                         var result = parseFloat(value);
 
                         if (typeof result === "undefined"
@@ -322,25 +334,23 @@ def _on_card_will_show(
                 args.muted = opts.mute;
                 args.controls = opts.controls;
                 args.disablePictureInPicture = true;
-                args.fluid = true;
+                args.fluid = {'true' if autoresize else 'false'};
+
+                if (typeof opts.width === "number" && opts.width >= 0) {{
+                    args.width = opts.width;
+                    args.fluid = false;
+                }}
+
+                if (typeof opts.height === 'number' && opts.height >= 0) {{
+                    args.height = opts.height;
+                    args.fluid = false;
+                }}
 
                 globalThis.videojs(el, args, function onPlayerReady() {{
                     this.playsinline(true);
 
-                    if (typeof opts.volume !== "undefined"
-                    && opts.volume !== null) {{
-                        this.volume(Math.max(0.0,
-                            Math.min(1.0, opts.volume)))
-                    }}
-
-                    if (typeof opts.width !== "undefined"
-                    && opts.width !== null) {{
-                        this.width(opts.width);
-                    }}
-
-                    if (typeof opts.height !== 'undefined'
-                    && opts.height !== null) {{
-                        this.height(opts.height);
+                    if (typeof opts.volume === "number" && opts.volume >= 0) {{
+                        this.volume(Math.max(0.0, Math.min(1.0, opts.volume)))
                     }}
 
                     if (opts.autoplay) {{

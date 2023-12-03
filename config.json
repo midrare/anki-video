@@ -5,5 +5,6 @@
     "loop": true,
     "controls": true,
     "mute": false,
-    "volume": 1.0
+    "volume": null,
+    "size": "auto"
 }
