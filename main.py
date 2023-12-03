@@ -368,7 +368,9 @@ def _on_editor_will_process_mime(
     extended: bool,
     drop_event: bool,
 ) -> aqt.qt.QMimeData:
-    if any(u.scheme() != 'file' for u in mime.urls()) \
+    if not mime.hasUrls() \
+    or len(mime.urls()) != 1 \
+    or any(u.scheme() != 'file' for u in mime.urls()) \
     or any(_qurl_ext(url).lower() not in VIDEO_EXTS for url in mime.urls()):
         return mime
 
