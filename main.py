@@ -66,9 +66,6 @@ assert aqt.mw, 'no main window found'
 config: Config = DEFAULT_CONFIG \
     | (aqt.mw.addonManager.getConfig(__name__) or {}) # type: ignore
 
-_executor: concurrent.futures.Executor = concurrent.futures.ThreadPoolExecutor()
-_stop_event: threading.Event = threading.Event()
-
 
 def _import_file_async(
     editor: aqt.editor.EditorWebView,
@@ -80,18 +77,14 @@ def _import_file_async(
     assert aqt.mw and aqt.mw.col, 'no collection'
     media_dir = pathlib.Path(aqt.mw.col.media.dir())
 
-    def process(
+    def copy_file(
         src: typing.Union[str, pathlib.Path],
         dest: typing.Union[str, pathlib.Path],
-        cancel: typing.Optional[typing.Callable[[], bool]] = None,
     ):
         if not isinstance(src, pathlib.Path):
             src = pathlib.Path(src)
         if not isinstance(dest, pathlib.Path):
             dest = pathlib.Path(dest)
-
-        if cancel and cancel():
-            return
 
         dest.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="anki-video-") as tmpdir:
@@ -100,15 +93,15 @@ def _import_file_async(
             tmpfile.rename(dest)
 
     uid = str(uuid.uuid4())
-    videodest = media_dir / f"anki-video-{uid}{file.suffix.lower()}"
-    _executor.submit(process, file, videodest, _stop_event.is_set)
+    dest = media_dir / f"anki-video-{uid}{file.suffix.lower()}"
+    op = aqt.operations.QueryOp(
+        parent=aqt.mw,
+        op=lambda col: copy_file(file, dest),
+        success=lambda r: 0,
+    )
 
-    return uid, videodest
-
-
-def _on_exit(sig: int, frame):
-    global _stop_event
-    _stop_event.set()
+    op.without_collection().run_in_background()
+    return uid, dest
 
 
 def _on_card_will_show(
@@ -332,13 +325,6 @@ def _on_editor_will_show_context_menu(
     menu.addAction("Edit")
 
 
-def init_signals():
-    signal.signal(signal.SIGINT, _on_exit)
-    signal.signal(signal.SIGABRT, _on_exit)
-    signal.signal(signal.SIGBREAK, _on_exit)
-    signal.signal(signal.SIGTERM, _on_exit)
-
-
 def init_hooks():
     aqt.gui_hooks.card_will_show.append(_on_card_will_show)
     # aqt.gui_hooks.editor_will_show_context_menu.append(
@@ -347,5 +333,4 @@ def init_hooks():
 
 
 def init_addon():
-    init_signals()
     init_hooks()
