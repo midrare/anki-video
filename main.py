@@ -1,5 +1,4 @@
 import concurrent.futures
-from enum import auto
 import json
 import mimetypes
 import os
@@ -7,13 +6,9 @@ import pathlib
 import re
 import shutil
 import signal
-import subprocess
 import tempfile
 import threading
-import time
 import typing
-import urllib.parse
-import urllib.request
 import uuid
 import xml.dom.minidom
 
@@ -26,31 +21,8 @@ import aqt.operations
 import aqt.qt
 import aqt.utils
 
-IMAGE_EXTS: typing.Final[list[str]] = [
-    '.png',
-    '.jpg',
-    '.jpeg',
-    '.tiff',
-    '.gif',
-    '.bmp',
-    '.webp',
-]
 VIDEO_EXTS: typing.Final[list[str]] = [
-    '.avi',
-    '.mkv',
     '.webm',
-    '.mp4',
-]
-AUDIO_EXTS: typing.Final[list[str]] = [
-    '.mp3',
-    '.ogg',
-    '.wav',
-    '.aiff',
-    '.aac',
-    '.wma',
-    '.flac',
-    '.alac',
-    '.wma',
 ]
 
 MEDIA_REGEXP: typing.Pattern = re.compile(
@@ -66,15 +38,6 @@ ROOT_DIR: typing.Final[pathlib.Path] = pathlib.Path(__file__).parent.absolute()
 JS_FILES: typing.Final[list[pathlib.Path]] = [ROOT_DIR / "video.js"]
 CSS_FILES: typing.Final[list[pathlib.Path]] = [ROOT_DIR / "video-js.css"]
 ELEMENT_CLASS: typing.Final[str] = "anki-video"
-
-THUMBNAIL_EXT: typing.Final[str] = '.png'
-VIDEO_EXT: typing.Final[str] = '.webm'
-
-assert THUMBNAIL_EXT in IMAGE_EXTS
-assert VIDEO_EXT in VIDEO_EXTS
-
-FFMPEG_EXE: typing.Final[str] = shutil.which('ffmpeg') or 'ffmpeg'
-FFPROBE_EXE: typing.Final[str] = shutil.which('ffprobe') or 'ffprobe'
 
 Config = typing.TypedDict(
     'Config', {
@@ -107,81 +70,10 @@ _executor: concurrent.futures.Executor = concurrent.futures.ThreadPoolExecutor()
 _stop_event: threading.Event = threading.Event()
 
 
-def _download_video(
-        url: str, dest: typing.Union[str, pathlib.Path], force: bool = False):
-    if not isinstance(dest, pathlib.Path):
-        dest = pathlib.Path(dest)
-
-    if url and (force or not dest.exists()):
-        remote = urllib.request.urlopen(url)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        with dest.open('wb') as f:
-            f.write(remote.read())
-
-
-def _exec_cmd(
-    cmd: list[str],
-    cancel: typing.Optional[typing.Callable[[], bool]],
-) -> int:
-    proc = subprocess.Popen(cmd, text=True, shell=True)
-    while proc.poll() is None:
-        if cancel and cancel():
-            proc.kill()
-            break
-        try:
-            time.sleep(0.1)
-        except (Exception, KeyboardInterrupt) as e:
-            proc.kill()
-            raise e
-    return proc.returncode
-
-
-def _exec_ffmpeg(
-    file: typing.Union[str, pathlib.Path],
-    dest: typing.Union[str, pathlib.Path],
-    cancel: typing.Optional[typing.Callable[[], bool]] = None,
-):
-    if not isinstance(file, pathlib.Path):
-        file = pathlib.Path(file)
-    if not isinstance(dest, pathlib.Path):
-        dest = pathlib.Path(dest)
-
-    with tempfile.TemporaryDirectory(prefix="anki-video-") as tmpdir:
-        if dest.suffix.lower() in IMAGE_EXTS:
-            cmd = [
-                FFPROBE_EXE, '-loglevel', 'error', '-of', 'csv=p=0',
-                '-show_entries', 'format=duration', file
-            ]
-            proc = subprocess.run(cmd, capture_output=True, shell=True)
-            try:
-                duration = float(proc.stdout)
-            except Exception:
-                duration = 0.0
-
-            tmpfile = pathlib.Path(tmpdir, dest.name)
-            cmd = [
-                FFMPEG_EXE, '-loglevel', 'error', '-i', file, '-ss',
-                str(duration / 2), '-update', 'true', '-vframes', '1', tmpfile
-            ]
-            proc = subprocess.run(cmd, shell=True)
-
-            if proc.returncode == 0:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(tmpfile, dest)
-        else:
-            tmpfile = pathlib.Path(tmpdir, dest.name)
-            cmd = [
-                FFMPEG_EXE, '-loglevel', 'error', '-y', "-i", file, tmpfile
-            ]
-            if _exec_cmd(cmd, cancel) == 0:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(tmpfile, dest)
-
-
-def _import_video_async(
+def _import_file_async(
     editor: aqt.editor.EditorWebView,
     file: typing.Union[str, pathlib.Path],
-) -> tuple[str, pathlib.Path, pathlib.Path]:
+) -> tuple[str, pathlib.Path]:
     if not isinstance(file, pathlib.Path):
         file = pathlib.Path(file)
 
@@ -198,29 +90,20 @@ def _import_video_async(
         if not isinstance(dest, pathlib.Path):
             dest = pathlib.Path(dest)
 
-        if (src.suffix.lower() == dest.suffix.lower()):
-            # speedup hack
-            with tempfile.TemporaryDirectory(prefix="anki-video-") as tmpdir:
-                tmpfile = pathlib.Path(tmpdir, dest.name)
-                shutil.copyfile(src, tmpfile)
+        if cancel and cancel():
+            return
 
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                tmpfile.rename(dest)
-        else:
-            _exec_ffmpeg(src, dest, cancel)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="anki-video-") as tmpdir:
+            tmpfile = pathlib.Path(tmpdir, dest.name)
+            shutil.copyfile(src, tmpfile)
+            tmpfile.rename(dest)
 
     uid = str(uuid.uuid4())
-
-    assert THUMBNAIL_EXT.startswith('.'), 'thumbnail ext must start with dot'
-    assert VIDEO_EXT.startswith('.'), 'video ext must start with dot'
-    thumbdest = media_dir / f"anki-video-{uid}{THUMBNAIL_EXT}"
-    videodest = media_dir / f"anki-video-{uid}{VIDEO_EXT}"
-
-    global _stop_event
-    _executor.submit(process, file, thumbdest, _stop_event.is_set)
+    videodest = media_dir / f"anki-video-{uid}{file.suffix.lower()}"
     _executor.submit(process, file, videodest, _stop_event.is_set)
 
-    return uid, thumbdest, videodest
+    return uid, videodest
 
 
 def _on_exit(sig: int, frame):
@@ -392,7 +275,7 @@ def _on_editor_will_process_mime(
 
     for url in mime.urls():
         file = pathlib.Path(url.toLocalFile())
-        uid, thumbfile, videofile = _import_video_async(editor, file)
+        uid, videofile = _import_file_async(editor, file)
 
         doc = xml.dom.minidom.Document()
 
@@ -401,7 +284,6 @@ def _on_editor_will_process_mime(
         video.setAttribute('class', ' '.join([ 'video-js', ELEMENT_CLASS ]))
         video.setAttribute('controls', 'true')
         video.setAttribute('preload', 'auto')
-        video.setAttribute('poster', thumbfile.name)
         doc.appendChild(video)
 
         # empty text child node to prevent Anki's inserthtml() mangling
@@ -414,11 +296,11 @@ def _on_editor_will_process_mime(
         source.appendChild(doc.createTextNode(''))
         video.appendChild(source)
 
-        # prevents Anki from deleting file when checking media
-        # https://github.com/ankitects/anki/blob/ ...
-        #   ... ae6a03942f651790c40f8d8479f90eb7715bf2af/rslib/src/text.rs#L104
-
-        for asset in [videofile.name, thumbfile.name]:
+        for asset in [videofile.name]:
+            # prevents Anki from deleting file when checking media
+            # https://github.com/ankitects/anki/blob/
+            #   ae6a03942f651790c40f8d8479f90eb7715bf2af/
+            #   rslib/src/text.rs#L104
             el = doc.createElement('object')
             el.setAttribute('hidden', 'true')
             el.setAttribute('src', asset)
@@ -435,7 +317,7 @@ def _on_editor_will_process_mime(
 
     html = '\n'.join(htmls)
     editor.eval(
-        rf"""(function () {{
+        f"""(function () {{
         let html = {json.dumps(html)};
         if (html !== "") {{
             setFormat("inserthtml", html)
