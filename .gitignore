@@ -3,6 +3,9 @@
 /.pdm-python
 /.pdm-build
 
+# user-specific Anki addon config file
+/meta.json
+
 # Created by https://www.toptal.com/developers/gitignore/api/vim,tags,linux,macos,emacs,windows,intellij,sublimetext,visualstudiocode,python,pycharm
 # Edit at https://www.toptal.com/developers/gitignore?templates=vim,tags,linux,macos,emacs,windows,intellij,sublimetext,visualstudiocode,python,pycharm
 

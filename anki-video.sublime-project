@@ -9,6 +9,7 @@
 				"//.root",
 				"//.pdm-python",
                 "*.un~",
+                "//meta.json",
 			],
 			"folder_exclude_patterns": [
 				"//.venv",
