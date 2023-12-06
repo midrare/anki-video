@@ -9,15 +9,13 @@ Inline video player support for Anki.
 
 ### Prerequisites
  
-  1. You need `ffmpeg` and `ffprobe` in your `$PATH`.  
-     Windows: install from [scoop](https://scoop.sh/#/apps?q=ffmpeg)  
-     macOS: install from [homebrew](https://formulae.brew.sh/formula/ffmpeg)  
-     Linux: you know how!  
-  2. Go to Anki -> Tools (menubar) -> Add-ons -> Install from file  
-  3. Select file downloaded from releases page  
+  1. Go to Anki -> Tools (menubar) -> Add-ons -> Install from file  
+  2. Select file downloaded from releases page  
 
 ## Usage
-Drag and drop video files into any of the fields in the "Add card" window. For best results, use only `.webm` files. Other video formats will be automatically converted in the background, but this takes a long time.
+Drag and drop video files into any of the fields in the "Add card" window. Use only `.webm` files. Other formats need to be pre-converted before dropping into a note.  
+
+Video player options can be changed on a global or per-video basis. For global options, click the "config" button in the Anki addons window. For video-specific options, click the `</>` button in the note editor window, find the `<video>` tag, and edit the `<config>` values.
 
 ## License
 Distributed under the MIT license. See `LICENSE.txt` for more information
