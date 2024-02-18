@@ -14,9 +14,12 @@ import anki.media
 import aqt
 import aqt.editor
 import aqt.gui_hooks
+import aqt.previewer
 import aqt.operations
 import aqt.qt
+import aqt.reviewer
 import aqt.utils
+import aqt.webview
 
 VIDEO_EXTS: typing.Final[list[str]] = [
     '.webm',
@@ -32,8 +35,6 @@ MEDIA_REGEXP: typing.Pattern = re.compile(
     + r'\..*')
 
 ROOT_DIR: typing.Final[pathlib.Path] = pathlib.Path(__file__).parent.absolute()
-JS_FILES: typing.Final[list[pathlib.Path]] = [ROOT_DIR / "video.js"]
-CSS_FILES: typing.Final[list[pathlib.Path]] = [ROOT_DIR / "video-js.css"]
 ELEMENT_CLASS: typing.Final[str] = "anki-video"
 
 Config = typing.TypedDict(
@@ -101,28 +102,18 @@ def _import_file_async(
     return uid, dest
 
 
-def _on_card_will_show(
-    html: str,
-    card: anki.cards.Card,
-    context: str,
-) -> str:
-    html += '\n'
-    html += '<!-- anki-video BEGIN -->\n'
+def _on_webview_will_set_content(
+        web_content: aqt.webview.WebContent, context: typing.Optional[object]):
+    if not isinstance(context,
+                      (aqt.reviewer.Reviewer, aqt.previewer.BrowserPreviewer)):
+        return
 
-    # css
-    html += f'<style>\n'
-    for css in CSS_FILES:
-        with open(css, 'r') as f:
-            html += f.read()
-            html += '\n'
-    html += '</style>\n'
+    assert aqt.mw, 'no main window'
+    pkg = aqt.mw.addonManager.addonFromModule(__name__)
+    config = DEFAULT_CONFIG | (aqt.mw.addonManager.getConfig(__name__) or {})
 
-    # javascript
-    html += f'<script type="text/javascript">\n'
-    for script in JS_FILES:
-        with open(script, 'r') as f:
-            html += f.read()
-            html += '\n'
+    web_content.css.append(f"/_addons/{pkg}/video-js.css")
+    web_content.js.append(f"/_addons/{pkg}/video.js")
 
     autoresize = False
     width = -1
@@ -138,8 +129,9 @@ def _on_card_will_show(
         elif size.lower() in ['default']:
             autoresize = False
 
-    html += f"""
-        onUpdateHook.push(function() {{
+    web_content.head += f'<script type="text/javascript">\n'
+    web_content.head += f"""
+        var _ankiVideoUpdate = function() {{
             const els = document.querySelectorAll(".{ELEMENT_CLASS}");
             els.forEach((el) => {{
                 var opts = {{}};
@@ -231,13 +223,26 @@ def _on_card_will_show(
                     }}
                 }});
             }});
+        }}
+
+        if (typeof onUpdateHook !== 'undefined') {{
+            onUpdateHook.push(_ankiVideoUpdate);
+        }}
+
+        document.addEventListener("DOMContentLoaded", _ankiVideoUpdate);
+
+        MutationObserver = (window.MutationObserver
+                || window.WebKitMutationObserver);
+        var observer = new MutationObserver(function(mutations, observer) {{
+            _ankiVideoUpdate();
+        }});
+
+        observer.observe(document, {{
+            subtree: true,
+            childList: true,
         }});
         """
-
-    html += '</script>\n'
-
-    html += '<!-- anki-video END -->\n'
-    return html
+    web_content.head += '</script>\n'
 
 
 def _qurl_ext(url: aqt.qt.QUrl) -> str:
@@ -323,10 +328,12 @@ def _on_editor_will_show_context_menu(
 
 
 def init_hooks():
-    aqt.gui_hooks.card_will_show.append(_on_card_will_show)
+    assert aqt.mw, 'no main window'
+    aqt.mw.addonManager.setWebExports(__name__, r".*\.(css|js|bmp|png)")
     # aqt.gui_hooks.editor_will_show_context_menu.append(
     #     _on_editor_will_show_context_menu)
     aqt.gui_hooks.editor_will_process_mime.append(_on_editor_will_process_mime)
+    aqt.gui_hooks.webview_will_set_content.append(_on_webview_will_set_content)
 
 
 def init_addon():
