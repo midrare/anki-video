@@ -327,14 +327,10 @@ def _on_editor_will_show_context_menu(
     menu.addAction("Edit")
 
 
-def init_hooks():
+def init_addon():
     assert aqt.mw, 'no main window'
     aqt.mw.addonManager.setWebExports(__name__, r".*\.(css|js|bmp|png)")
     # aqt.gui_hooks.editor_will_show_context_menu.append(
     #     _on_editor_will_show_context_menu)
     aqt.gui_hooks.editor_will_process_mime.append(_on_editor_will_process_mime)
     aqt.gui_hooks.webview_will_set_content.append(_on_webview_will_set_content)
-
-
-def init_addon():
-    init_hooks()
